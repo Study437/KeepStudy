@@ -1,3 +1,6 @@
 {
-  
+  "code": 100,
+  "name": "1.0.0",
+  "desc": "* 修正闪退\n* 配置新增",
+  "isMustUpdate": false,
 }
