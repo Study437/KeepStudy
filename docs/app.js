@@ -1,6 +1,7 @@
-// 发布安装包后，填写实际可用的 HTTPS 地址或本站相对路径。
+// 新版 Release 沿用 app-release.apk 文件名，官网自动下载最新正式版。
 const siteConfig = {
-  releasePage: 'https://github.com/Study437/KeepStudy',
+  releasePage: 'https://github.com/Study437/KeepStudy/releases',
+  androidApkUrl: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-release.apk',
   androidArm64Url: '',
   androidArm32Url: '',
 };
@@ -118,11 +119,14 @@ function showDownload() {
   const options = document.querySelector('#download-options');
   options.replaceChildren();
   const versions = [
+    { url: siteConfig.androidApkUrl, title: 'Android 安装包', subtitle: '官方发布安装包 · Android 7.0 及以上' },
     { url: siteConfig.androidArm64Url, title: 'Android 64 位', subtitle: '适用于大多数 Android 手机 · ARM64' },
     { url: siteConfig.androidArm32Url, title: 'Android 32 位', subtitle: '适用于部分较早的 Android 设备 · ARMv7' },
   ].filter(version => usableDownloadUrl(version.url));
 
-  document.querySelector('.dialog-description').textContent = versions.length ? '选择适合设备的 Android 安装包。' : '好资源，值得认真准备。';
+  document.querySelector('.dialog-description').textContent = versions.length === 1
+    ? '下载 Android 安装包，开始探索学习资源。'
+    : versions.length > 1 ? '选择适合设备的 Android 安装包。' : '好资源，值得认真准备。';
 
   if (versions.length) {
     for (const [index, version] of versions.entries()) {
