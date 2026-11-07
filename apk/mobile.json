@@ -1,6 +1,7 @@
 {
-  "code": 100,
-  "name": "1.0.0",
-  "desc": "* 修正闪退\n* 配置新增",
+  "code": 2,
+  "name": "1.0.1",
+  "desc": "* 某度网盘链接支持APP内查看、播放",
   "isMustUpdate": false,
+  "releaseTag": "1.0.1"
 }
