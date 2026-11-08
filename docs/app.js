@@ -1,9 +1,9 @@
-// 新版 Release 沿用 app-release.apk 文件名，官网自动下载最新正式版。
+// 官网自动推荐最新正式版的架构专用包，通用包保留为兼容入口。
 const siteConfig = {
   releasePage: 'https://github.com/Study437/KeepStudy/releases',
   androidApkUrl: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-release.apk',
-  androidArm64Url: '',
-  androidArm32Url: '',
+  androidArm64Url: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-arm64-v8a-release.apk',
+  androidArm32Url: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-armeabi-v7a-release.apk',
 };
 
 const resources = [
@@ -32,6 +32,7 @@ const storageKey = 'keep-study-website-favorites';
 let activeCategory = 'all';
 let favorites = new Set();
 let toastTimer;
+let downloadRequest = 0;
 
 try {
   const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
@@ -115,27 +116,76 @@ function usableDownloadUrl(value) {
   }
 }
 
-function showDownload() {
+async function detectAndroidArchitecture() {
+  const userAgent = navigator.userAgent || '';
+  const clientHints = navigator.userAgentData;
+  const isAndroid = clientHints?.platform
+    ? clientHints.platform.toLowerCase() === 'android'
+    : /\bAndroid\b/i.test(userAgent);
+  if (!isAndroid) return null;
+
+  let timeout;
+  try {
+    if (typeof clientHints?.getHighEntropyValues === 'function') {
+      const hints = await Promise.race([
+        clientHints.getHighEntropyValues(['architecture', 'bitness']),
+        new Promise(resolve => { timeout = setTimeout(() => resolve(null), 1000); }),
+      ]);
+      if (hints?.architecture === 'arm') {
+        if (hints.bitness === '64') return 'arm64-v8a';
+        if (hints.bitness === '32') return 'armeabi-v7a';
+      } else if (hints?.architecture) {
+        return null;
+      }
+    }
+  } catch {
+    // 内置浏览器可能不支持或拒绝提供 Client Hints，继续检查明确的 UA 标记。
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  // Android 版本、机型和 armv8l 均不足以确定可安装的 ABI，不据此猜测。
+  if (/\b(?:aarch64|arm64(?:-v8a)?)\b/i.test(userAgent)) return 'arm64-v8a';
+  if (/\b(?:armv7l?|armeabi-v7a)\b/i.test(userAgent)) return 'armeabi-v7a';
+  return null;
+}
+
+function renderDownloadOptions(architecture) {
   const options = document.querySelector('#download-options');
   options.replaceChildren();
+  options.setAttribute('aria-busy', 'false');
   const versions = [
-    { url: siteConfig.androidApkUrl, title: 'Android 安装包', subtitle: '官方发布安装包 · Android 7.0 及以上' },
-    { url: siteConfig.androidArm64Url, title: 'Android 64 位', subtitle: '适用于大多数 Android 手机 · ARM64' },
-    { url: siteConfig.androidArm32Url, title: 'Android 32 位', subtitle: '适用于部分较早的 Android 设备 · ARMv7' },
+    { abi: 'universal', url: siteConfig.androidApkUrl, title: 'Android 通用包', subtitle: '兼容多种架构 · 不确定设备架构时可选 · 体积较大' },
+    { abi: 'arm64-v8a', url: siteConfig.androidArm64Url, title: 'Android 64 位', subtitle: 'arm64-v8a · 适用于 64 位 ARM 系统 · 体积更小' },
+    { abi: 'armeabi-v7a', url: siteConfig.androidArm32Url, title: 'Android 32 位', subtitle: 'armeabi-v7a · 适用于支持 32 位 ARM 应用的系统 · 体积更小' },
   ].filter(version => usableDownloadUrl(version.url));
+  const matched = versions.find(version => version.abi === architecture);
+  const preferred = matched || versions.find(version => version.abi === 'universal');
+  if (preferred) {
+    versions.splice(versions.indexOf(preferred), 1);
+    versions.unshift(preferred);
+  }
 
-  document.querySelector('.dialog-description').textContent = versions.length === 1
-    ? '下载 Android 安装包，开始探索学习资源。'
-    : versions.length > 1 ? '选择适合设备的 Android 安装包。' : '好资源，值得认真准备。';
+  let description = '好资源，值得认真准备。';
+  if (matched) {
+    description = `根据浏览器提供的架构信息，推荐 ${architecture}，也可手动选择其他版本。`;
+  } else if (versions.some(version => version.abi !== 'universal')) {
+    description = architecture
+      ? `识别到 ${architecture}，当前未提供对应架构包。${preferred ? '可下载通用包。' : '请确认兼容性后选择安装包。'}`
+      : `未能自动确认设备架构，请手动选择。${preferred ? '不确定时可下载通用包。' : '请确认目标设备支持所选架构。'}`;
+  } else if (versions.length) {
+    description = '下载 Android 通用安装包，开始探索学习资源。';
+  }
+  downloadDialog.querySelector('.dialog-description').textContent = description;
 
   if (versions.length) {
-    for (const [index, version] of versions.entries()) {
+    for (const version of versions) {
       const link = document.createElement('a');
-      link.className = `button download-option ${index === 0 ? 'button-primary' : 'button-dark'}`;
+      link.className = `button download-option ${version === preferred ? 'button-primary' : 'button-dark'}`;
       link.href = usableDownloadUrl(version.url);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.innerHTML = `<span>${version.title}<small>${version.subtitle}</small></span>${icon('download')}`;
+      link.innerHTML = `<span>${version.title}${version === matched ? ' · 推荐' : ''}<small>${version.subtitle}</small></span>${icon('download')}`;
       options.append(link);
     }
   } else {
@@ -151,7 +201,27 @@ function showDownload() {
     status.append(releaseLink);
     options.append(status);
   }
+}
+
+async function showDownload() {
+  const request = ++downloadRequest;
+  const hasArchitecturePackages = usableDownloadUrl(siteConfig.androidArm64Url) || usableDownloadUrl(siteConfig.androidArm32Url);
+  if (!hasArchitecturePackages) {
+    renderDownloadOptions(null);
+    showDialog(downloadDialog);
+    return;
+  }
+
+  const options = document.querySelector('#download-options');
+  const status = document.createElement('p');
+  status.className = 'download-pending';
+  status.textContent = '正在识别设备架构…';
+  options.replaceChildren(status);
+  options.setAttribute('aria-busy', 'true');
+  downloadDialog.querySelector('.dialog-description').textContent = '正在为你选择适合的 Android 安装包。';
   showDialog(downloadDialog);
+  const architecture = await detectAndroidArchitecture();
+  if (request === downloadRequest && downloadDialog.open) renderDownloadOptions(architecture);
 }
 
 function showResource(id) {
