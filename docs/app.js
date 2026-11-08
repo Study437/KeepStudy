@@ -1,6 +1,7 @@
 // 官网自动推荐最新正式版的架构专用包，通用包保留为兼容入口。
 const siteConfig = {
   releasePage: 'https://github.com/Study437/KeepStudy/releases',
+  downloadProxyPrefix: 'https://ghproxy.net/',
   androidApkUrl: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-release.apk',
   androidArm64Url: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-arm64-v8a-release.apk',
   androidArm32Url: 'https://github.com/Study437/KeepStudy/releases/latest/download/app-armeabi-v7a-release.apk',
@@ -116,6 +117,18 @@ function usableDownloadUrl(value) {
   }
 }
 
+function acceleratedDownloadUrl(value) {
+  const direct = usableDownloadUrl(value);
+  const prefix = usableDownloadUrl(siteConfig.downloadProxyPrefix);
+  if (!direct || !prefix) return direct;
+  const source = new URL(direct);
+  const proxy = new URL(prefix);
+  if (source.origin !== 'https://github.com' || source.username || source.password || source.search || source.hash ||
+      !source.pathname.startsWith('/Study437/KeepStudy/releases/') || !source.pathname.endsWith('.apk') ||
+      proxy.protocol !== 'https:' || proxy.username || proxy.password || proxy.search || proxy.hash) return direct;
+  return `${prefix.endsWith('/') ? prefix : `${prefix}/`}${direct}`;
+}
+
 async function detectAndroidArchitecture() {
   const userAgent = navigator.userAgent || '';
   const clientHints = navigator.userAgentData;
@@ -180,13 +193,26 @@ function renderDownloadOptions(architecture) {
 
   if (versions.length) {
     for (const version of versions) {
+      const direct = usableDownloadUrl(version.url);
+      const accelerated = acceleratedDownloadUrl(version.url);
+      const useProxy = accelerated !== direct;
       const link = document.createElement('a');
       link.className = `button download-option ${version === preferred ? 'button-primary' : 'button-dark'}`;
-      link.href = usableDownloadUrl(version.url);
+      link.href = accelerated;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.innerHTML = `<span>${version.title}${version === matched ? ' · 推荐' : ''}<small>${version.subtitle}</small></span>${icon('download')}`;
+      link.innerHTML = `<span>${version.title}${version === matched ? ' · 推荐' : ''}${useProxy ? ' · 加速下载' : ''}<small>${version.subtitle}</small></span>${icon('download')}`;
       options.append(link);
+      if (useProxy) {
+        const directLink = document.createElement('a');
+        directLink.className = 'text-link download-direct-link';
+        directLink.href = direct;
+        directLink.target = '_blank';
+        directLink.rel = 'noopener noreferrer';
+        directLink.setAttribute('aria-label', `${version.title} GitHub 直连下载`);
+        directLink.textContent = 'GitHub 直连下载';
+        options.append(directLink);
+      }
     }
   } else {
     const status = document.createElement('div');
